@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ECG + HR + SpO₂ Realtime (BLE)</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: linear-gradient(to bottom, #f0f4f8, #e1e8ee); min-height: 100vh; font-family: 'Segoe UI', sans-serif; }
+    .chart-container { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 20px; }
+    #chartECG-container { border-left: 6px solid #10b981; }
+    #chartHR-container { border-left: 6px solid #dc2626; }
+    #chartSpO2-container { border-left: 6px solid #2563eb; }
+    .btn { transition: all 0.3s; }
+    .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    .value-display {
+      font-size: 2.5rem;
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    #hrValue { color: #dc2626; }
+    #spo2Value { color: #2563eb; }
+  </style>
+</head>
+<body class="text-gray-800">
+  <div class="container mx-auto px-4 py-8 max-w-7xl">
+    <h2 class="text-3xl font-bold text-center mb-8 text-gray-900">Realtime ECG, Heart Rate & SpO₂ (BLE)</h2>
+    
+    <div class="status-card bg-white p-5 rounded-lg shadow mb-6">
+      <h3 id="status" class="text-lg font-semibold">Status: Belum terhubung</h3>
+    </div>
+
+    <div class="flex justify-center gap-4 mb-8">
+      <button id="connectBtn" onclick="connectDevice()" class="btn bg-blue-600 text-white px-6 py-3 rounded-lg font-medium flex items-center gap-2">
+        Connect BLE
+      </button>
+      <button id="disconnectBtn" onclick="disconnectDevice()" disabled class="btn bg-red-600 text-white px-6 py-3 rounded-lg font-medium flex items-center gap-2">
+        Disconnect
+      </button>
+    </div>
+
+    <!-- Grafik ECG -->
+    <div id="chartECG-container" class="chart-container mb-6">
+      <h3 class="text-lg font-semibold text-gray-800 mb-4">ECG Waveform (AD8232)</h3>
+      <canvas id="chartECG"></canvas>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-8">
+      <div id="chartHR-container" class="chart-container">
+        <div class="value-display" id="hrValue">--</div>
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">Heart Rate (BPM)</h3>
+        <canvas id="chartHR"></canvas>
+      </div>
+      <div id="chartSpO2-container" class="chart-container">
+        <div class="value-display" id="spo2Value">--</div>
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">SpO₂ (%)</h3>
+        <canvas id="chartSpO2"></canvas>
+      </div>
+    </div>
+
+    <!-- RIWAYAT DATA LENGKAP DARI AWAL SAMPAI AKHIR -->
+    <div class="bg-white rounded-xl shadow-lg p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-xl font-bold text-gray-800">Riwayat Data Lengkap Sejak Terkoneksi</h3>
+        <div class="text-sm text-gray-600">
+          Total entri: <span id="totalEntries" class="font-bold text-blue-600">0</span>
+        </div>
+      </div>
+      <div class="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+        <table class="w-full text-sm text-left">
+          <thead class="sticky top-0 bg-gray-800 text-white">
+            <tr>
+              <th class="px-4 py-3">No</th>
+              <th class="px-4 py-3">Waktu</th>
+              <th class="px-4 py-3">Heart Rate (BPM)</th>
+              <th class="px-4 py-3">SpO₂ (%)</th>
+            </tr>
+          </thead>
+          <tbody id="historyTable" class="divide-y divide-gray-200"></tbody>
+        </table>
+      </div>
+      <div class="mt-3 text-xs text-gray-500 text-right">
+        Riwayat otomatis terhapus saat refresh halaman
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let device, server, hrChar, spo2Char;
+    const ecgLabels = [], ecgData = [];
+    const hrLabels = [], hrData = [];
+    const spo2Labels = [], spo2Data = [];
+    let historyCounter = 0;
+
+    // Reset riwayat saat connect
+    function resetHistory() {
+      document.getElementById("historyTable").innerHTML = "";
+      historyCounter = 0;
+      document.getElementById("totalEntries").innerText = "0";
+    }
+
+    const chartECG = new Chart(document.getElementById('chartECG'), {
+      type: 'line',
+      data: { labels: ecgLabels, datasets: [{ label: 'ECG Signal', borderColor: '#10b981', data: ecgData, fill: false, tension: 0.1, pointRadius: 0 }] },
+      options: {
+        scales: { y: { min: 0, max: 4095, title: { display: true, text: 'ADC Value' }}, x: { display: false } },
+        plugins: { legend: { display: false } },
+        animation: { duration: 0 }
+      }
+    });
+
+    const chartHR = new Chart(document.getElementById('chartHR'), {
+      type: 'line',
+      data: { labels: hrLabels, datasets: [{ label: 'HR', borderColor: '#dc2626', data: hrData, fill: false, tension: 0.3 }] },
+      options: { scales: { y: { beginAtZero: true, max: 200 } } }
+    });
+
+    const chartSpO2 = new Chart(document.getElementById('chartSpO2'), {
+      type: 'line',
+      data: { labels: spo2Labels, datasets: [{ label: 'SpO₂', borderColor: '#2563eb', data: spo2Data, fill: false, tension: 0.3 }] },
+      options: { scales: { y: { beginAtZero: true, max: 100 } } }
+    });
+
+    async function connectDevice() {
+      try {
+        device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: ['12345678-1234-5678-9abc-123456789abc']
+        });
+        server = await device.gatt.connect();
+        document.getElementById("status").innerText = "Terhubung – Membaca data...";
+
+        const service = await server.getPrimaryService('12345678-1234-5678-9abc-123456789abc');
+        hrChar = await service.getCharacteristic('12345678-1234-5678-9abc-123456789abd');
+        spo2Char = await service.getCharacteristic('12345678-1234-5678-9abc-123456789abe');
+
+        await hrChar.startNotifications();
+        hrChar.addEventListener('characteristicvaluechanged', handleECG_HR);
+
+        await spo2Char.startNotifications();
+        spo2Char.addEventListener('characteristicvaluechanged', handleSpO2);
+
+        document.getElementById("connectBtn").disabled = true;
+        document.getElementById("disconnectBtn").disabled = false;
+
+        resetHistory(); // Reset riwayat saat connect baru
+      } catch (e) {
+        document.getElementById("status").innerText = "Error: " + e.message;
+      }
+    }
+
+    function handleECG_HR(event) {
+      const val = new TextDecoder().decode(event.target.value);
+      
+      if (val.startsWith('E')) {
+        const ecg = parseInt(val.substring(1));
+        if (!isNaN(ecg)) {
+          const time = Date.now();
+          ecgLabels.push(time);
+          ecgData.push(ecg);
+          if (ecgData.length > 500) { ecgLabels.shift(); ecgData.shift(); }
+          chartECG.update('quiet');
+        }
+      }
+
+      const hrMatch = val.match(/HR:([\d.]+)/);
+      if (hrMatch) {
+        const hr = parseFloat(hrMatch[1]);
+        const timeStr = new Date().toLocaleTimeString();
+        hrLabels.push(timeStr);
+        hrData.push(hr);
+        if (hrLabels.length > 30) { hrLabels.shift(); hrData.shift(); }
+        chartHR.update();
+        document.getElementById("hrValue").innerText = hr.toFixed(1);
+
+        updateStatus(hr, null);
+        addToFullHistory(hr, null);
+      }
+    }
+
+    function handleSpO2(event) {
+      const val = new TextDecoder().decode(event.target.value);
+      const match = val.match(/SpO2:([\d.]+)/);
+      if (match) {
+        const spo2 = parseFloat(match[1]);
+        const timeStr = new Date().toLocaleTimeString();
+        spo2Labels.push(timeStr);
+        spo2Data.push(spo2);
+        if (spo2Labels.length > 30) { spo2Labels.shift(); spo2Data.shift(); }
+        chartSpO2.update();
+        document.getElementById("spo2Value").innerText = spo2.toFixed(1) + "%";
+
+        updateStatus(null, spo2);
+        addToFullHistory(null, spo2);
+      }
+    }
+
+    function updateStatus(hr, spo2) {
+      let text = "Terhubung";
+      if (hr !== null) text += ` | HR: ${hr.toFixed(1)} BPM`;
+      if (spo2 !== null) text += ` | SpO₂: ${spo2.toFixed(1)}%`;
+      document.getElementById("status").innerText = text;
+    }
+
+    // RIWAYAT LENGKAP (TIDAK DIBATASI 20 BARIS LAGI)
+    function addToFullHistory(hr, spo2) {
+      historyCounter++;
+      const now = new Date().toLocaleTimeString();
+
+      const row = document.createElement('tr');
+      row.className = "hover:bg-gray-50 transition-colors";
+      row.innerHTML = `
+        <td class="px-4 py-2 font-medium text-gray-900">${historyCounter}</td>
+        <td class="px-4 py-2">${now}</td>
+        <td class="px-4 py-2 text-center font-medium ${hr >= 60 && hr <= 100 ? 'text-green-600' : 'text-red-600'}">
+          ${hr !== null ? hr.toFixed(1) : '-'}
+        </td>
+        <td class="px-4 py-2 text-center font-medium ${spo2 >= 95 ? 'text-green-600' : 'text-orange-600'}">
+          ${spo2 !== null ? spo2.toFixed(1) : '-'}
+        </td>
+      `;
+
+      const tbody = document.getElementById('historyTable');
+      tbody.prepend(row);
+      document.getElementById("totalEntries").innerText = historyCounter;
+    }
+
+    async function disconnectDevice() {
+      if (device && device.gatt.connected) {
+        await device.gatt.disconnect();
+        document.getElementById("status").innerText = "Terputus – Riwayat tetap tersimpan sampai refresh";
+        document.getElementById("connectBtn").disabled = false;
+        document.getElementById("disconnectBtn").disabled = true;
+
+        document.getElementById("hrValue").innerText = "--";
+        document.getElementById("spo2Value").innerText = "--";
+      }
+    }
+
+    // Reset riwayat saat halaman direfresh
+    window.addEventListener('load', resetHistory);
+  </script>
+</body>
+</html>

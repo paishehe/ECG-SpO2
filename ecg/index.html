@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ECG Dashboard - ESP32</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: linear-gradient(to bottom, #e6f0fa, #d1e0f0);
+      min-height: 100vh;
+      position: relative;
+      overflow-x: hidden;
+    }
+    .ecg-grid-bg {
+      background: linear-gradient(
+        to right,
+        rgba(200, 200, 200, 0.2) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        rgba(200, 200, 200, 0.2) 1px,
+        transparent 1px
+      );
+      background-size: 20px 20px;
+    }
+    .dashboard-card {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+      padding: 32px;
+      max-width: 64rem;
+      position: relative;
+      z-index: 10;
+    }
+    .btn {
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.125rem;
+      transform: scale(1);
+    }
+    .btn:hover:not(:disabled) {
+      transform: scale(1.03);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    }
+    .btn-serial { background-color: #059669; }
+    .btn-serial:hover { background-color: #047857; }
+    .btn-bluetooth { background-color: #2563eb; }
+    .btn-bluetooth:hover { background-color: #1d4ed8; }
+    .btn-wifi { background-color: #d97706; }
+    .btn-wifi:hover { background-color: #b45309; }
+    .ecg-wave {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.05;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .header-icon {
+      animation: pulse 2s infinite ease-in-out;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+  </style>
+</head>
+<body class="font-sans text-gray-800 flex flex-col items-center justify-center p-4 min-h-screen">
+  <!-- ECG Wave Background -->
+  <svg class="ecg-wave" viewBox="0 0 1440 320" preserveAspectRatio="none">
+    <path fill="none" stroke="#dc2626" stroke-width="2" d="M0,160 C320,100 400,220 720,160 C1040,100 1120,220 1440,160" />
+  </svg>
+
+  <div class="dashboard-card ecg-grid-bg">
+    <div class="flex justify-center mb-6">
+      <svg class="w-12 h-12 text-red-600 header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+      </svg>
+    </div>
+    <h2 class="text-4xl font-bold text-center mb-8 text-gray-900">ECG Monitoring Dashboard - ESP32</h2>
+    <div class="flex flex-wrap justify-center gap-4">
+      <a 
+        href="serial.html" 
+        class="btn btn-serial text-white font-semibold py-3 px-6 rounded-lg transition duration-200 text-center flex-1 min-w-[12rem]"
+      >
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+        </svg>
+        Serial (USB Cable)
+      </a>
+      <a 
+        href="bluetooth.html" 
+        class="btn btn-bluetooth text-white font-semibold py-3 px-6 rounded-lg transition duration-200 text-center flex-1 min-w-[12rem]"
+      >
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+        </svg>
+        Bluetooth (BLE)
+      </a>
+      <a 
+        href="wifi.html" 
+        class="btn btn-wifi text-white font-semibold py-3 px-6 rounded-lg transition duration-200 text-center flex-1 min-w-[12rem]"
+      >
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path>
+        </svg>
+        Wi-Fi (Firebase)
+      </a>
+    </div>
+  </div>
+</body>
+</html>
